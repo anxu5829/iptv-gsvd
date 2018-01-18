@@ -23,6 +23,7 @@ if __name__ == "__main__":
     第几季 = re.compile(r'(第[一二三四五六七八九十]季)|第\d{1,2}季')
     第几期 = re.compile(r'第[一二三四五六七八九十]期|第\d{1,2}期')
     之     = re.compile(r'之')
+    全集   = re.compile(r'全集')
     def ruleSelect(x):
         if  集在前.search(x) != None:
             return(re.split(集在前,x)[0])
