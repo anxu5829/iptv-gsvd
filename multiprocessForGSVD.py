@@ -5,8 +5,11 @@ from usefulTool import clearDir,changeNameToID
 import pandas as pd
 import gc
 
-def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda):
+def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
+                        userName, itemName, targetName, userGroupName, itemGroupName
 
+                        ):
+    #
     # queue = userQueue
     # filelock = userFileLock
     # taskList = userTaskList
@@ -42,10 +45,10 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda):
 
             # extract useful infomation
             # getting user list , item list , userClass , itemClass
-            userList  = data['newUserID'].unique()
-            itemList  = data['name'].unique()
-            userClass = data['userGroup'].unique()
-            itemClass = data['tag'].unique()
+            userList  = data[userName].unique()
+            itemList  = data[itemName].unique()
+            userClass = data[userGroupName].unique()
+            itemClass = data[itemGroupName].unique()
 
 
             # now , our target is updating user info:
@@ -57,10 +60,10 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda):
                 counter +=1
                 if counter%3000 == 0:
                     print('name ',name,' :  we have finished  :',counter  / len(userList), 'percent of ', indexOfFile,' user class ')
-                dataUsed    = data[data['newUserID'] == userNowDealing]
-                targetUsed     = dataUsed['MEDIACOUNT']
-                itemLatentFactorUsed      = itemLatentFactor[ dataUsed['name'],:]
-                itemClassLatentFactorUsed = itemClassLatentFactor[ dataUsed['tag'],:  ]
+                dataUsed    = data[data[userName] == userNowDealing]
+                targetUsed     = dataUsed[targetName]
+                itemLatentFactorUsed      = itemLatentFactor[ dataUsed[itemName],:]
+                itemClassLatentFactorUsed = itemClassLatentFactor[ dataUsed[itemGroupName],:  ]
 
                 # attention : cause of user is in one group, so we can just extract one row form useClsLntfctr
                 userClassLatentFactorUsed = userClassLatentFactor[ indexOfFile,:  ]
@@ -88,10 +91,10 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda):
             ##### extract info for userClass :
             print("user in class : ",indexOfFile," latent factor is prepared! ")
 
-            targetUsed = data['MEDIACOUNT']
-            itemLatentFactorUsed = itemLatentFactor[data['name'], :]
-            itemClassLatentFactorUsed = itemClassLatentFactor[data['tag'], :]
-            userLatentFactorUsed = userLatentFactor[ data['newUserID'] ,:]
+            targetUsed = data[targetName]
+            itemLatentFactorUsed = itemLatentFactor[data[itemName], :]
+            itemClassLatentFactorUsed = itemClassLatentFactor[data[itemGroupName], :]
+            userLatentFactorUsed = userLatentFactor[ data[userName] ,:]
 
             ps = (itemLatentFactorUsed + itemClassLatentFactorUsed)
             yforReg = targetUsed - (ps*(userLatentFactorUsed)).sum(1)
@@ -115,7 +118,10 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda):
 
 
 
-def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda):
+def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda,
+                        userName, itemName, targetName, userGroupName, itemGroupName
+
+                        ):
 
     # queue = itemQueue
     # filelock = itemFileLock
@@ -153,10 +159,10 @@ def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda):
 
             # extract useful infomation
             # getting user list , item list , userClass , itemClass
-            userList  = data['newUserID'].unique()
-            itemList  = data['name'].unique()
-            userClass = data['userGroup'].unique()
-            itemClass = data['tag'].unique()
+            userList  = data[userName].unique()
+            itemList  = data[itemName].unique()
+            userClass = data[userGroupName].unique()
+            itemClass = data[itemGroupName].unique()
 
 
             # now , our target is updating user info:
@@ -168,10 +174,10 @@ def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda):
                 counter +=1
                 if counter%3000 == 0:
                     print('name ',name,' :  we have finished  :',counter  / len(itemList), 'percent of ', indexOfFile,' item class ')
-                dataUsed    = data[data['name'] == itemNowDealing]
-                targetUsed     = dataUsed['MEDIACOUNT']
-                userLatentFactorUsed      = userLatentFactor[ dataUsed['newUserID'],:]
-                userClassLatentFactorUsed = userClassLatentFactor[ dataUsed['userGroup'],:  ]
+                dataUsed    = data[data[itemName] == itemNowDealing]
+                targetUsed     = dataUsed[targetName]
+                userLatentFactorUsed      = userLatentFactor[ dataUsed[userName],:]
+                userClassLatentFactorUsed = userClassLatentFactor[ dataUsed[userGroupName],:  ]
 
                 # attention : cause of user is in one group, so we can just extract one row form useClsLntfctr
                 itemClassLatentFactorUsed = itemClassLatentFactor[ indexOfFile,:  ]
@@ -199,10 +205,10 @@ def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda):
             ##### extract info for userClass :
             print("user in class : ",indexOfFile," latent factor is prepared! ")
 
-            targetUsed = data['MEDIACOUNT']
-            userLatentFactorUsed = userLatentFactor[data['newUserID'], :]
-            userClassLatentFactorUsed = userClassLatentFactor[data['userGroup'], :]
-            itemLatentFactorUsed = itemLatentFactor[ data['name'] ,:]
+            targetUsed = data[targetName]
+            userLatentFactorUsed = userLatentFactor[data[userName], :]
+            userClassLatentFactorUsed = userClassLatentFactor[data[userGroupName], :]
+            itemLatentFactorUsed = itemLatentFactor[ data[itemName] ,:]
 
             ps = (userLatentFactorUsed + userClassLatentFactorUsed)
             yforReg = targetUsed - (ps*(itemLatentFactorUsed)).sum(1)
