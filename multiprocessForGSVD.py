@@ -4,10 +4,11 @@ import shutil
 from usefulTool import clearDir,changeNameToID
 import pandas as pd
 import gc
+import scipy.sparse as sparse
 
 def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
                         userName, itemName, targetName, userGroupName, itemGroupName
-
+                        ,penalty
                         ):
     #
     # queue = userQueue
@@ -23,7 +24,7 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
         if not queue.empty():
             # remove all the files in the updataPQST
             # get the indexOffile
-            print("name :" + str(name) + "  is running !")
+
             # indexOfFile equals to indexOfLatent
             indexOfFile =queue.get()
 
@@ -33,9 +34,7 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
                 rootdir  = "C:\\Users\\22560\\Documents\\iptv\\updatedPQST\\"
                 clearDir(rootdir)
 
-            #loading data
 
-            data = pd.read_csv(csvPlace+taskList[indexOfFile])
 
             # loading latent info
             itemClassLatentFactor = pd.read_table(".\\oldPQST\\itemClassLatentFactor.txt").values
@@ -43,48 +42,45 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
             userLatentFactor = pd.read_table(".\\oldPQST\\userLatentFactor.txt").values
             itemLatentFactor = pd.read_table(".\\oldPQST\\itemLatentFactor.txt").values
 
-            # extract useful infomation
-            # getting user list , item list , userClass , itemClass
-            userList  = data[userName].unique()
-            itemList  = data[itemName].unique()
-            userClass = data[userGroupName].unique()
-            itemClass = data[itemGroupName].unique()
-
-
-            # now , our target is updating user info:
-
             ##### extract info for user :
-            userLentFacorForUserList = []
-            counter = 0
-            for userNowDealing in userList:
-                counter +=1
-                if counter%3000 == 0:
-                    print('name ',name,' :  we have finished  :',counter  / len(userList), 'percent of ', indexOfFile,' user class ')
-                dataUsed    = data[data[userName] == userNowDealing]
-                targetUsed     = dataUsed[targetName]
-                itemLatentFactorUsed      = itemLatentFactor[ dataUsed[itemName],:]
-                itemClassLatentFactorUsed = itemClassLatentFactor[ dataUsed[itemGroupName],:  ]
 
-                # attention : cause of user is in one group, so we can just extract one row form useClsLntfctr
-                userClassLatentFactorUsed = userClassLatentFactor[ indexOfFile,:  ]
+            # genertate data need
+            data = pd.read_csv(csvPlace + taskList[indexOfFile])
+            data  = data.sort_values(by = userName).reset_index(drop = True).reset_index()
+            userClassLatentFactorUsed = userClassLatentFactor[indexOfFile, :]
+            ps      = (itemLatentFactor[data[itemName],:] +\
+                                itemClassLatentFactor[data[itemGroupName],:])
+            yForReg = (data[targetName]- ps.dot(userClassLatentFactorUsed)).values
 
-                # record p+s & y-(p+s)*t
-                ps = itemClassLatentFactorUsed + itemLatentFactorUsed
-                yforReg  = targetUsed - ps.dot(userClassLatentFactorUsed)
-                reg = linear_model.Ridge(alpha=lamda)
-                reg.fit(ps,yforReg)
-                userLentFacorForUserList.append(reg.coef_)
+            def lassoRegres(x):
+                reg = linear_model.Lasso(alpha=1, fit_intercept=False,warm_start=True,)
+                reg.fit(ps[x['index'], :], yForReg[x['index']])
+                return reg.coef_
 
-            userLentFacorForUserList = pd.DataFrame(userLentFacorForUserList)
-            userLentFacorForUserList['userList'] = userList
+            def ridgeRegres(x):
+                reg = linear_model.Ridge(alpha=lamda,fit_intercept=False)
+                reg.fit(ps[x['index'] ,:],yForReg[x['index']])
+                return reg.coef_
+
+            if penalty == 'l2':
+                userLentFacorForUserList  = data.groupby('newUserID').apply(ridgeRegres)
+            elif penalty == 'l1':
+                userLentFacorForUserList = data.groupby('newUserID').apply(lassoRegres)
+            else :
+                userLentFacorForUserList = None
+                assert  Exception
+            print("latent facotr for user in group  ",indexOfFile," is prepared !")
+
+            userLentFacorForUserList = pd.DataFrame(userLentFacorForUserList.values.tolist(),index=userLentFacorForUserList.index)
+
+            userLentFacorForUserList['userList'] = userLentFacorForUserList.index
+
             with fileLock:
                 print(" is writting ", "class " , indexOfFile," data now")
                 print(userLentFacorForUserList.shape)
                 with open('.\\updatedPQST\\lententFactor_of_user_in_class.csv','a') as f:
                     userLentFacorForUserList.to_csv(f,index=False,header=False)
 
-
-            del userLentFacorForUserList,reg,dataUsed,ps,yforReg,targetUsed,itemLatentFactorUsed,itemClassLatentFactorUsed
             gc.collect()
             # output the result and release the data
 
@@ -99,7 +95,11 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
             ps = (itemLatentFactorUsed + itemClassLatentFactorUsed)
             yforReg = targetUsed - (ps*(userLatentFactorUsed)).sum(1)
 
-            reg = linear_model.Ridge(alpha=lamda)
+            if penalty == 'l2':
+                reg = linear_model.Ridge(alpha=lamda,fit_intercept=False)
+            elif penalty == 'l1':
+                reg = linear_model.Lasso(alpha=1, fit_intercept=False, warm_start=True, )
+
             reg.fit(ps, yforReg)
 
             NewUserClassLatentFactor = pd.DataFrame(reg.coef_).T
@@ -120,7 +120,7 @@ def multiprocessForUser(queue,fileLock,taskList,csvPlace,lamda,
 
 def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda,
                         userName, itemName, targetName, userGroupName, itemGroupName
-
+                        ,penalty
                         ):
 
     # queue = itemQueue
@@ -129,26 +129,21 @@ def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda,
     # csvPlace = itemCsvPlace
     # fileLock = itemFileLock
 
+    name = multiprocessing.current_process().name
 
-    name  = multiprocessing.current_process().name
-
-    while(True):
+    while (True):
         if not queue.empty():
             # remove all the files in the updataPQST
             # get the indexOffile
-            print("name :" + str(name) + "  is running !")
+
             # indexOfFile equals to indexOfLatent
-            indexOfFile =queue.get()
+            indexOfFile = queue.get()
 
-            print("name : " + str(name) + "  is doing " + str(indexOfFile)+ "  itemClass")
+            print("name : " + str(name) + "  is doing " + str(indexOfFile) + " 　itemClass")
             # 如果拿到的indexOfFile是第一个，那么就清空output.txt文件
-            if indexOfFile == 0 :
-                rootdir  = "C:\\Users\\22560\\Documents\\iptv\\updatedPQST\\"
+            if indexOfFile == 0:
+                rootdir = "C:\\Users\\22560\\Documents\\iptv\\updatedPQST\\"
                 clearDir(rootdir)
-
-            #loading data
-
-            data = pd.read_csv(csvPlace+taskList[indexOfFile])
 
             # loading latent info
             itemClassLatentFactor = pd.read_table(".\\oldPQST\\itemClassLatentFactor.txt").values
@@ -156,74 +151,76 @@ def multiprocessForItem(queue,fileLock,taskList,csvPlace,lamda,
             userLatentFactor = pd.read_table(".\\oldPQST\\userLatentFactor.txt").values
             itemLatentFactor = pd.read_table(".\\oldPQST\\itemLatentFactor.txt").values
 
-
-            # extract useful infomation
-            # getting user list , item list , userClass , itemClass
-            userList  = data[userName].unique()
-            itemList  = data[itemName].unique()
-            userClass = data[userGroupName].unique()
-            itemClass = data[itemGroupName].unique()
-
-
-            # now , our target is updating user info:
-
             ##### extract info for user :
-            itemLentFacorForItemList = []
-            counter = 0
-            for itemNowDealing in itemList:
-                counter +=1
-                if counter%3000 == 0:
-                    print('name ',name,' :  we have finished  :',counter  / len(itemList), 'percent of ', indexOfFile,' item class ')
-                dataUsed    = data[data[itemName] == itemNowDealing]
-                targetUsed     = dataUsed[targetName]
-                userLatentFactorUsed      = userLatentFactor[ dataUsed[userName],:]
-                userClassLatentFactorUsed = userClassLatentFactor[ dataUsed[userGroupName],:  ]
 
-                # attention : cause of user is in one group, so we can just extract one row form useClsLntfctr
-                itemClassLatentFactorUsed = itemClassLatentFactor[ indexOfFile,:  ]
+            # genertate data need
+            data = pd.read_csv(csvPlace + taskList[indexOfFile])
+            data = data.sort_values(by=itemName).reset_index(drop=True).reset_index()
 
-                # record p+s & y-(p+s)*t
-                ps = userClassLatentFactorUsed + userLatentFactorUsed
-                yforReg  = targetUsed - ps.dot(itemClassLatentFactorUsed)
-                reg = linear_model.Ridge(alpha=lamda)
-                reg.fit(ps,yforReg)
-                itemLentFacorForItemList.append(reg.coef_)
+            itemClassLatentFactorUsed = itemClassLatentFactor[indexOfFile, :]
+            ps = (userLatentFactor[data[userName], :] +
+                  userClassLatentFactor[data[userGroupName], :])
+            yForReg = (data[targetName] - ps.dot(itemClassLatentFactorUsed)).values
 
-            itemLentFacorForItemList = pd.DataFrame(itemLentFacorForItemList)
-            itemLentFacorForItemList['itemList'] = itemList
+            def lassoRegres(x):
+                reg = linear_model.Lasso(alpha=1, fit_intercept=False, warm_start=True, )
+                reg.fit(ps[x['index'], :], yForReg[x['index']])
+                return reg.coef_
+
+            def ridgeRegres(x):
+                reg = linear_model.Ridge(alpha=lamda, fit_intercept=False)
+                reg.fit(ps[x['index'], :], yForReg[x['index']])
+                return reg.coef_
+
+            if penalty == 'l2':
+                itemLentFacorForUserList = data.groupby(itemName).apply(ridgeRegres)
+            elif penalty == 'l1':
+                itemLentFacorForUserList = data.groupby(itemName).apply(lassoRegres)
+            else:
+                itemLentFacorForUserList = None
+                assert Exception
+            print("latent facotr for item in group  ", indexOfFile, " is prepared !")
+
+            itemLentFacorForUserList = pd.DataFrame(itemLentFacorForUserList.values.tolist(),
+                                                    index=itemLentFacorForUserList.index)
+
+            itemLentFacorForUserList['itemList'] = itemLentFacorForUserList.index
+
             with fileLock:
-                print(" is writting ", "class " , indexOfFile," data now")
-                print(itemLentFacorForItemList.shape)
-                with open('.\\updatedPQST\\lententFactor_of_item_in_class.csv','a') as f:
-                    itemLentFacorForItemList.to_csv(f,index=False,header=False)
+                print(itemLentFacorForUserList.shape)
+                with open('.\\updatedPQST\\lententFactor_of_item_in_class.csv', 'a') as f:
+                    itemLentFacorForUserList.to_csv(f, index=False, header=False)
 
-
-            del itemLentFacorForItemList
             gc.collect()
             # output the result and release the data
 
             ##### extract info for userClass :
-            print("user in class : ",indexOfFile," latent factor is prepared! ")
+            print("item in class : ", indexOfFile, " latent factor is prepared! ")
 
             targetUsed = data[targetName]
             userLatentFactorUsed = userLatentFactor[data[userName], :]
             userClassLatentFactorUsed = userClassLatentFactor[data[userGroupName], :]
-            itemLatentFactorUsed = itemLatentFactor[ data[itemName] ,:]
+            itemLatentFactorUsed = itemLatentFactor[data[itemName], :]
 
             ps = (userLatentFactorUsed + userClassLatentFactorUsed)
-            yforReg = targetUsed - (ps*(itemLatentFactorUsed)).sum(1)
+            yforReg = targetUsed - (ps * (itemLatentFactorUsed)).sum(1)
 
-            reg = linear_model.Ridge(alpha=lamda)
+            if penalty == 'l2':
+                reg = linear_model.Ridge(alpha=lamda,fit_intercept=False)
+            elif penalty == 'l1':
+                reg = linear_model.Lasso(alpha=1, fit_intercept=False, warm_start=True, )
+
             reg.fit(ps, yforReg)
 
             NewItemClassLatentFactor = pd.DataFrame(reg.coef_).T
             NewItemClassLatentFactor['itemClass'] = indexOfFile
 
             with fileLock:
-                with open('.\\updatedPQST\\lententFactor_of_itemClass.csv','a') as f:
-                        NewItemClassLatentFactor.to_csv(f,index=False,header=False)
+                with open('.\\updatedPQST\\lententFactor_of_itemClass.csv', 'a') as f:
+                    NewItemClassLatentFactor.to_csv(f, index=False, header=False)
 
-            print("item class : ", indexOfFile, "'s latent factor is prepared! ")
+            print("item    class : ", indexOfFile, "'s latent factor is prepared! ")
+
 
         else:
             print("name :" + str(name) + "is finished !")

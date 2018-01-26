@@ -10,9 +10,9 @@ import re
 def timeinfoGenerator():
     # reading the behavior table, which containing the info of user-item info
     behavior_dateparse = lambda x: pd.datetime.strptime(x, '%Y%m%d%H')
-    behavior = pd.read_csv("result1.csv", dtype={'CONTENTNAME': str, 'USERID': str},
+    behavior = pd.read_csv("./behavior/behavior.csv", dtype={'CONTENTNAME': str, 'USERID': str},
                            parse_dates=['STATIS_TIME'],
-                           date_parser=behavior_dateparse
+                           date_parser=behavior_dateparse,encoding = 'gbk'
                            #,iterator=True
                            )
     #behavior = behavior.get_chunk(100)
@@ -66,10 +66,7 @@ def timeinfoGenerator():
     behavior = behavior.sort_values(by = ['newUserID','STATIS_TIME'])
 
 
-    behavior.to_csv("behavior.csv")
-
-
-
+    behavior.to_csv("behavior.csv",index = False)
 
 
 if __name__ == "__main__":
@@ -81,7 +78,7 @@ if __name__ == "__main__":
 
 
     # generate time info for later analysis
-    #timeinfoGenerator()
+    timeinfoGenerator()
 
     behavior = pd.read_csv("behavior.csv",
                            usecols=['MEDIAID','CONTENTNAME','userGroup','newUserID','STATIS_TIME'])

@@ -5,6 +5,7 @@ import pandas as pd
 
 from scipy.sparse import  csr_matrix
 import igraph
+from  igraph.clustering import Clustering
 
 def changeNameToID(tableName,id , plan = 'A'):
     """
@@ -53,20 +54,20 @@ def changeNameToID(tableName,id , plan = 'A'):
 
 if __name__ =="__main__":
     os.chdir("C:\\Users\\22560\\Documents\\iptv")
-    behavior = pd.read_csv("behavior.csv")
+    behavior = pd.read_csv("./originalData/behavior.csv")
 
     # 找出被观看次数前200的“东西”
 
-    behavior = behavior[ behavior['MEDIAID'].isin( behavior.groupby('MEDIAID')['USERID'].count().nlargest(200).reset_index()['MEDIAID'])]
+    behavior = behavior[ behavior['TV_NAME'].isin( behavior.groupby('TV_NAME')['newUserID'].count().nlargest(200).reset_index()['TV_NAME'])]
 
-    behavior,mediaid = changeNameToID(behavior,'MEDIAID',plan='A')
-    behavior,userid  = changeNameToID(behavior, 'newUserID', plan='A')
 
-    sna = behavior[['MEDIAID','newUserID']]
+    sna = behavior[['TV_NAME','newUserID']].copy()
     del behavior
-    sna['weight']  = 1
-    media_user  = csr_matrix((sna.weight,(sna.MEDIAID,sna.newUserID)))
+    sna.loc[:,'weight']  = 1
+    media_user  = csr_matrix((sna.weight,(sna.TV_NAME,sna.newUserID)))
     media_media = media_user.dot(media_user.transpose())
+    media_media[list(range(media_media.shape[0])),list(range(media_media.shape[0]))] = 0
+    media_media.eliminate_zeros()
     media_media = media_media.tocoo()
     network = pd.DataFrame({'row' : media_media.row,
     'col' : media_media.col})

@@ -91,3 +91,4 @@ if __name__ == "__main__":
 
     name_type = pd.DataFrame({'name':nameList,'type':typeList})
     name_type.to_csv('no_type_typeList.csv',index=False)
+
