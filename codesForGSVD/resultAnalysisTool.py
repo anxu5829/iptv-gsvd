@@ -134,7 +134,11 @@ if __name__ == "__main__":
     realLike = test['realTime']/test['timeOfMv']
     preLike  = test['predictTime']/test['timeOfMv']
     preLike[preLike>1] = 1
-    np.exp(-((realLike - preLike)**2)).mean()
+
+
+    realLike.dot(preLike)/(np.sqrt(realLike.dot(realLike))*np.sqrt(preLike.dot(preLike)))
+
+
 
     #
 

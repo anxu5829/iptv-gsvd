@@ -25,11 +25,7 @@ def dataPreparation(userName, itemName, targetName,userGroupName,itemGroupName):
     trainSet = trainSet[trainSet.tag != "no type"]
 
     # # use log transform for stability
-    # trainSet[targetName] = np.log(trainSet[targetName])
-
-
-
-
+    trainSet[targetName] = np.log(trainSet[targetName])
 
 
     # # encode user , item
